@@ -1,0 +1,179 @@
+{
+  "name": "Founder Inbox Cleaner",
+  "nodes": [
+    {
+      "parameters": {
+        "interval": 15,
+        "unit": "minutes"
+      },
+      "id": "scheduleTrigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "messages",
+        "operation": "getAll",
+        "q": "is:unread",
+        "maxMessages": 50
+      },
+      "id": "gmailTrigger",
+      "name": "Gmail: Get Unread Emails",
+      "type": "n8n-nodes-base.gmail",
+      "position": [450, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CRED_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.subject + '\\n' + ($json.text || $json.html) }}",
+        "options": {
+          "systemMessage": "You are an email classifier. Analyze the email content and determine if it is:\n- HIGH: Urgent, requires immediate attention (deadlines, urgent requests, critical updates)\n- MEDIUM: Important but not urgent (meetings, regular updates, opportunities)\n- LOW: Low priority (newsletters, promotional, notifications, spam)\n\nRespond with exactly one word: HIGH, MEDIUM, or LOW."
+        }
+      },
+      "id": "classifyPriority",
+      "name": "Classify Priority with ChatGPT",
+      "type": "n8n-nodes-base.openAi",
+      "position": [650, 300],
+      "credentials": {
+        "openAi": {
+          "id": "YOUR_OPENAI_CRED_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const priority = $input.all()[0].json.choice.trim().toUpperCase();\nconst emailId = $input.all()[1].json.id;\nconst threadId = $input.all()[1].json.threadId;\n\nlet actions = [];\n\nif (priority === 'LOW') {\n  actions.push({ action: 'addLabel', label: 'LowPriority' });\n  actions.push({ action: 'archive', threadId });\n} else if (priority === 'MEDIUM') {\n  actions.push({ action: 'addLabel', label: 'MediumPriority' });\n} else if (priority === 'HIGH') {\n  actions.push({ action: 'addLabel', label: 'HighPriority' });\n} else {\n  actions.push({ action: 'addLabel', label: 'MediumPriority' });\n}\n\nactions.push({ action: 'markRead', messageId: emailId });\n\nreturn actions.map(a => ({ json: a }));"
+      },
+      "id": "decideAction",
+      "name": "Decide Action",
+      "type": "n8n-nodes-base.code",
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "modify",
+        "resource": "messages",
+        "messageId": "={{ $json.messageId }}",
+        "addLabelIds": "={{ $json.label }}",
+        "threadId": "={{ $json.threadId }}"
+      },
+      "id": "applyLabel",
+      "name": "Gmail: Add Label",
+      "type": "n8n-nodes-base.gmail",
+      "position": [1050, 250],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CRED_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "modify",
+        "resource": "threads",
+        "threadId": "={{ $json.threadId }}",
+        "removeLabelIds": ["INBOX"]
+      },
+      "id": "archiveThread",
+      "name": "Gmail: Archive Thread",
+      "type": "n8n-nodes-base.gmail",
+      "position": [1050, 350],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CRED_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "modify",
+        "resource": "messages",
+        "messageId": "={{ $json.messageId }}",
+        "removeLabelIds": ["UNREAD"]
+      },
+      "id": "markRead",
+      "name": "Gmail: Mark as Read",
+      "type": "n8n-nodes-base.gmail",
+      "position": [1050, 450],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CRED_ID",
+          "name": "Gmail Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Get Unread Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Get Unread Emails": {
+      "main": [
+        [
+          {
+            "node": "Classify Priority with ChatGPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Priority with ChatGPT": {
+      "main": [
+        [
+          {
+            "node": "Decide Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Action": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Add Label",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Archive Thread",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Mark as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
