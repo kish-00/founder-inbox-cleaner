@@ -1,0 +1,14 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# n8n credential exports (never commit real credentials)
+*.n8n_credential.json
+
+# Node (if ever used locally)
+node_modules/
